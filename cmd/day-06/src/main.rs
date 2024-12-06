@@ -39,13 +39,40 @@ fn part_1(mut map: MapState) {
 }
 
 fn part_2(initial_map: MapState) {
+    thread::scope(|scope| {
+        let mut loop_obstacles = 0;
 
+        for (y, row) in initial_map.tiles.iter().enumerate() {
+            for (x, tile) in row.iter().enumerate() {
+                if tile.is_obstacle
+                    || (initial_map.guard_pos.0 == x as i32
+                        && initial_map.guard_pos.1 == y as i32)
+                {
+                    continue;
+                }
+
+                let mut cloned = initial_map.clone();
+                cloned.tiles[y][x].is_obstacle = true;
+
+                println!("Simulating obstacle on {x}, {y}");
+                if SimulCompleteResult::Loop == cloned.tick_until_out_of_bounds_or_loop() {
+                    loop_obstacles += 1;
+                    println!("Found loop obstacle on {x}, {y}");
+                }
+            }
+        }
+
+        println!("Total loop obstacles: {loop_obstacles}");
+    });
+}
+
+fn part_2_mt(initial_map: MapState) {
     thread::scope(|scope| {
         let mut handles = Vec::new();
 
         for (y, row) in initial_map.tiles.iter().enumerate() {
             let cloned_y = y;
-            let thread_inital  = initial_map.clone();
+            let thread_inital = initial_map.clone();
             let handle = scope.spawn(move || {
                 let mut loop_obstacles_inner = 0;
                 for (x, tile) in row.iter().enumerate() {
@@ -75,7 +102,6 @@ fn part_2(initial_map: MapState) {
         let total: i32 = handles.into_iter().map(|v| v.join().unwrap()).sum();
         println!("Total loop obstacles: {total}");
     });
-
 }
 
 const DIRECTIONS: [(i32, i32); 4] = [
@@ -200,11 +226,10 @@ impl MapState {
 
     fn is_loop(&self) -> bool {
         // if we visited the same tile with the same direction more than once were in a loop
-        for row in &self.tiles {
-            for col in row {
-                if col.visited_directions.iter().any(|v| *v > 1) {
-                    return true;
-                }
+        if self.is_guard_in_bounds() {
+            let tile = &self.tiles[self.guard_pos.1 as usize][self.guard_pos.0 as usize];
+            if tile.visited_directions.iter().any(|v| *v > 1) {
+                return true;
             }
         }
 
@@ -232,7 +257,7 @@ impl MapState {
         true
     }
 
-    fn is_guard_in_bounds(&mut self) -> bool {
+    fn is_guard_in_bounds(&self) -> bool {
         self.is_in_bounds(self.guard_pos.0, self.guard_pos.1)
     }
 
