@@ -20,12 +20,17 @@ fn main() {
 }
 
 fn part_1(map: &mut MapState) {
-    while map.tick() {}
+    loop {
+        let (is_in_bounds, _) = map.tick();
+        if !is_in_bounds {
+            break;
+        }
+    }
 
-    let unique_steps: i32 = map
-        .tiles
+    let unique_steps: usize = map
+        .visited_tiles
         .iter()
-        .map(|v| v.iter().filter(|t| t.is_visited()).count() as i32)
+        .map(|v| v.iter().filter(|t| **t != 0).count())
         .sum();
 
     println!("Unique steps: {unique_steps}");
@@ -37,9 +42,14 @@ fn part_2(mut initial_map: MapState) {
     initial_map.reset();
     initial_map.tick_until_out_of_bounds_or_loop();
     let mut check_coords = Vec::new();
-    for (y, row) in initial_map.tiles.iter().enumerate() {
+    // let check_coords = initial_map
+    //     .visited_tiles
+    //     .keys()
+    //     .cloned()
+    //     .collect::<Vec<_>>();
+    for (y, row) in initial_map.visited_tiles.iter().enumerate() {
         for (x, cell) in row.iter().enumerate() {
-            if cell.is_visited() {
+            if *cell > 0 {
                 check_coords.push((x, y));
             }
         }
@@ -84,13 +94,6 @@ const VISITED_DIRECTION_MASKS: [u8; 4] = [1 << 1, 1 << 3, 1 << 5, 1 << 7];
 #[derive(Clone)]
 struct TileState {
     is_obstacle: bool,
-    visited_directions: u8,
-}
-
-impl TileState {
-    fn is_visited(&self) -> bool {
-        self.visited_directions > 0
-    }
 }
 
 #[derive(Clone)]
@@ -100,17 +103,19 @@ struct MapState {
     map_width: usize,
     guard_pos: (i32, i32),
     guard_dir: usize,
+    visited_tiles: Vec<Vec<u8>>,
 }
 
 #[derive(PartialEq)]
 enum SimulCompleteResult {
-    OutOfBound,
+    OutOfBounds,
     Loop,
 }
 
 impl MapState {
     fn parse_from_input() -> Self {
         let mut tiles = Vec::new();
+        let mut visited_map = Vec::new();
         let mut guard_pos = None;
         let mut width = 0;
 
@@ -123,10 +128,15 @@ impl MapState {
                 .chars()
                 .map(|v| TileState {
                     is_obstacle: v == '#',
-                    visited_directions: 0,
                 })
                 .collect::<Vec<_>>();
             tiles.push(line_tiles);
+
+            let mut visited = Vec::new();
+            for _ in 0..line.len() {
+                visited.push(0);
+            }
+            visited_map.push(visited);
 
             if guard_pos.is_none() {
                 if let Some((x_pos, _)) = line.chars().enumerate().find(|(_, v)| *v == '^') {
@@ -140,7 +150,7 @@ impl MapState {
         // init starting tile state
         // we could probs do the tracking 1 tile behind to avoid this but whatever
         let guard_pos = guard_pos.unwrap();
-        tiles[guard_pos.1 as usize][guard_pos.0 as usize].visited_directions = 1;
+        visited_map[guard_pos.1 as usize][guard_pos.0 as usize] = 1;
 
         Self {
             guard_pos: guard_pos,
@@ -149,59 +159,54 @@ impl MapState {
             guard_dir: 0,
             tiles,
             map_width: width,
+
+            visited_tiles: visited_map,
         }
     }
 
+    // 1st in bounds, second looping
     #[inline]
-    fn tick(&mut self) -> bool {
+    fn tick(&mut self) -> (bool, bool) {
         let dir = DIRECTIONS[self.guard_dir];
         let next_pos_x = self.guard_pos.0 + dir.0;
         let next_pos_y = self.guard_pos.1 + dir.1;
 
         if !self.is_in_bounds(next_pos_x, next_pos_y) {
             self.guard_pos = (next_pos_x, next_pos_y);
-            return false;
+            return (false, false);
         }
 
         let next_tile = &mut self.tiles[next_pos_y as usize][next_pos_x as usize];
         if next_tile.is_obstacle {
             // an obstacle was hit R O T A T E
             self.rotate_guard();
-            return true;
+            return (true, false);
         }
 
         // dbg!(next_pos_x, next_pos_y);
         self.guard_pos = (next_pos_x, next_pos_y);
 
         // mark as visited
-        next_tile.visited_directions += 1 << (self.guard_dir * 2);
+        self.visited_tiles[next_pos_y as usize][next_pos_x as usize] += 1 << (self.guard_dir * 2);
 
-        // dbg!(self.tiles[next_pos_y as usize][next_pos_x as usize].visited_directions);
+        let is_looping = self.visited_tiles[next_pos_y as usize][next_pos_x as usize]
+            & VISITED_DIRECTION_MASKS[self.guard_dir]
+            != 0;
 
-        true
+        (true, is_looping)
     }
 
     fn tick_until_out_of_bounds_or_loop(&mut self) -> SimulCompleteResult {
         loop {
-            if self.tick() {
+            let (is_in_bounds, is_looping) = self.tick();
+
+            if is_in_bounds && is_looping {
                 // dbg!(self.guard_pos);
-                if self.is_loop() {
-                    return SimulCompleteResult::Loop;
-                }
-            } else {
-                return SimulCompleteResult::OutOfBound;
+                return SimulCompleteResult::Loop;
+            } else if !is_in_bounds {
+                return SimulCompleteResult::OutOfBounds;
             }
         }
-    }
-
-    fn is_loop(&self) -> bool {
-        // if we visited the same tile with the same direction more than once were in a loop
-        let tile = &self.tiles[self.guard_pos.1 as usize][self.guard_pos.0 as usize];
-        if (tile.visited_directions & VISITED_DIRECTION_MASKS[self.guard_dir]) != 0 {
-            return true;
-        }
-
-        false
     }
 
     fn rotate_guard(&mut self) {
@@ -219,33 +224,12 @@ impl MapState {
         true
     }
 
-    fn print_board(&self) {
-        println!("------");
-        for (y, row) in self.tiles.iter().enumerate() {
-            for (x, cell) in row.iter().enumerate() {
-                if cell.is_obstacle {
-                    print!("#")
-                } else if self.guard_pos.0 == x as i32 && self.guard_pos.1 == y as i32 {
-                    print!("*")
-                } else if cell.is_visited() {
-                    print!("X")
-                } else {
-                    print!(".")
-                }
-            }
-            print!("\n");
-        }
-    }
-
     fn reset(&mut self) {
-        for row in &mut self.tiles {
-            for cell in row {
-                cell.visited_directions = 0;
-            }
+        for row in &mut self.visited_tiles {
+            row.fill(0);
         }
 
-        self.tiles[self.start_guard_pos.1 as usize][self.start_guard_pos.0 as usize]
-            .visited_directions = 1;
+        self.visited_tiles[self.start_guard_pos.1 as usize][self.start_guard_pos.0 as usize] = 1;
         self.guard_pos = self.start_guard_pos;
         self.guard_dir = 0;
     }
