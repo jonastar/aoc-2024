@@ -39,11 +39,7 @@ fn part_2(mut initial_map: MapState) {
     let mut check_coords = Vec::new();
     for (y, row) in initial_map.tiles.iter().enumerate() {
         for (x, cell) in row.iter().enumerate() {
-            if cell.visited_directions[0] > 0
-                || cell.visited_directions[1] > 0
-                || cell.visited_directions[2] > 0
-                || cell.visited_directions[3] > 0
-            {
+            if cell.is_visited() {
                 check_coords.push((x, y));
             }
         }
@@ -83,16 +79,17 @@ const DIRECTIONS: [(i32, i32); 4] = [
     // left
     (-1, 0),
 ];
+const VISITED_DIRECTION_MASKS: [u8; 4] = [1 << 1, 1 << 3, 1 << 5, 1 << 7];
 
 #[derive(Clone)]
 struct TileState {
     is_obstacle: bool,
-    visited_directions: [u8; 4],
+    visited_directions: u8,
 }
 
 impl TileState {
     fn is_visited(&self) -> bool {
-        self.visited_directions.iter().any(|v| *v > 0)
+        self.visited_directions > 0
     }
 }
 
@@ -126,7 +123,7 @@ impl MapState {
                 .chars()
                 .map(|v| TileState {
                     is_obstacle: v == '#',
-                    visited_directions: [0, 0, 0, 0],
+                    visited_directions: 0,
                 })
                 .collect::<Vec<_>>();
             tiles.push(line_tiles);
@@ -143,7 +140,7 @@ impl MapState {
         // init starting tile state
         // we could probs do the tracking 1 tile behind to avoid this but whatever
         let guard_pos = guard_pos.unwrap();
-        tiles[guard_pos.1 as usize][guard_pos.0 as usize].visited_directions[0] = 1;
+        tiles[guard_pos.1 as usize][guard_pos.0 as usize].visited_directions = 1;
 
         Self {
             guard_pos: guard_pos,
@@ -155,6 +152,7 @@ impl MapState {
         }
     }
 
+    #[inline]
     fn tick(&mut self) -> bool {
         let dir = DIRECTIONS[self.guard_dir];
         let next_pos_x = self.guard_pos.0 + dir.0;
@@ -165,21 +163,21 @@ impl MapState {
             return false;
         }
 
-        if !self.is_obstacle(next_pos_x, next_pos_y) {
-            // dbg!(next_pos_x, next_pos_y);
-            self.guard_pos = (next_pos_x, next_pos_y);
-            // mark as visited
-
-            self.tiles[next_pos_y as usize][next_pos_x as usize].visited_directions
-                [self.guard_dir] += 1;
-
-            // dbg!(self.tiles[next_pos_y as usize][next_pos_x as usize].visited_directions);
-
+        let next_tile = &mut self.tiles[next_pos_y as usize][next_pos_x as usize];
+        if next_tile.is_obstacle {
+            // an obstacle was hit R O T A T E
+            self.rotate_guard();
             return true;
         }
 
-        // an obstacle was hit R O T A T E
-        self.rotate_guard();
+        // dbg!(next_pos_x, next_pos_y);
+        self.guard_pos = (next_pos_x, next_pos_y);
+
+        // mark as visited
+        next_tile.visited_directions += 1 << (self.guard_dir * 2);
+
+        // dbg!(self.tiles[next_pos_y as usize][next_pos_x as usize].visited_directions);
+
         true
     }
 
@@ -199,7 +197,7 @@ impl MapState {
     fn is_loop(&self) -> bool {
         // if we visited the same tile with the same direction more than once were in a loop
         let tile = &self.tiles[self.guard_pos.1 as usize][self.guard_pos.0 as usize];
-        if tile.visited_directions.iter().any(|v| *v > 1) {
+        if (tile.visited_directions & VISITED_DIRECTION_MASKS[self.guard_dir]) != 0 {
             return true;
         }
 
@@ -213,22 +211,12 @@ impl MapState {
         }
     }
 
-    // assumes x and y is in bounds
-    fn is_obstacle(&self, x: i32, y: i32) -> bool {
-        let tile = &self.tiles[y as usize][x as usize];
-        tile.is_obstacle
-    }
-
     fn is_in_bounds(&self, x: i32, y: i32) -> bool {
         if x < 0 || y < 0 || x >= self.map_width as i32 || y >= self.tiles.len() as i32 {
             return false;
         }
 
         true
-    }
-
-    fn is_guard_in_bounds(&self) -> bool {
-        self.is_in_bounds(self.guard_pos.0, self.guard_pos.1)
     }
 
     fn print_board(&self) {
@@ -252,12 +240,12 @@ impl MapState {
     fn reset(&mut self) {
         for row in &mut self.tiles {
             for cell in row {
-                cell.visited_directions = [0, 0, 0, 0];
+                cell.visited_directions = 0;
             }
         }
 
         self.tiles[self.start_guard_pos.1 as usize][self.start_guard_pos.0 as usize]
-            .visited_directions = [1, 0, 0, 0];
+            .visited_directions = 1;
         self.guard_pos = self.start_guard_pos;
         self.guard_dir = 0;
     }
