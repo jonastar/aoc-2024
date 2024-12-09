@@ -2,7 +2,7 @@ use std::fmt::{Display, Write};
 
 const INPUT: &str = include_str!("input.txt");
 const EXAMPLE_INPUT: &str = r#"
-233313312141413140202333133121414131402
+12983712899287
 "#;
 // 00...111...2...333.44.5555.6666.777.888899
 
@@ -14,7 +14,7 @@ fn main() {
     let parsed = parse_input(use_example.then_some(EXAMPLE_INPUT).unwrap_or(INPUT));
 
     println!("part 1");
-    // part_1(&parsed);
+    part_1(&parsed);
 
     println!("=======");
     println!("part 2");
@@ -96,7 +96,7 @@ fn part_2(parsed_input: &ParsedInput) {
 fn compact_part2(input: &mut ParsedInput) {
     let last_block = input.blocks.len();
 
-    println!("Original: {input}");
+    // println!("Original: {input}");
     for id in (0..last_block).rev() {
         let index = input
             .blocks
@@ -112,35 +112,26 @@ fn compact_part2(input: &mut ParsedInput) {
             continue;
         };
 
-        if free_index + 1 >= index {
+        if free_index >= index {
 
             continue;
         }
 
-        let old_left_free_space = input.blocks[free_index].free_space_right;
-        input.blocks[free_index].free_space_right = 0;
+        // println!("Moving {index} ({id}) to index {free_index}");
 
         let mut block = input.blocks.remove(index);
-
         let old_right_free_space = block.free_space_right;
         input.blocks[index - 1].free_space_right += old_right_free_space + block.length;
 
+        let old_left_free_space = input.blocks[free_index].free_space_right;
+        input.blocks[free_index].free_space_right = 0;
+
+
         block.free_space_right = old_left_free_space - block.length;
         input.blocks.insert(free_index + 1, block);
-        println!("Step:     {input}");
+        // println!("Step:     {input}");
 
         // we do not need to carry over free space on the right as we dont use that for anything
-    }
-}
-
-fn try_shift_left(index: usize, input: &mut ParsedInput){
-    if index == 0{
-        return;
-    }
-
-    let free_space_left = input.blocks[index-1].free_space_right;
-    if input.blocks[index-1].free_space_right >0{
-
     }
 }
 
@@ -150,7 +141,7 @@ fn checksum(input: &ParsedInput) -> u128 {
     for block in &input.blocks {
         for _ in 0..block.length {
             let inner = position as u128 * block.id as u128;
-            println!("{position} * {} = {inner}", block.id);
+            // println!("{position} * {} = {inner}", block.id);
             result += inner;
 
             position += 1;
@@ -194,7 +185,7 @@ fn parse_input(input: &str) -> ParsedInput {
             free_space_right: free_space,
         });
         id += 1;
-        println!("{id}")
+        // println!("{id}")
     }
 
     ParsedInput { blocks }
