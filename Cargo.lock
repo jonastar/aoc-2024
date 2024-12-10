@@ -39,5 +39,9 @@ name = "day-09"
 version = "0.1.0"
 
 [[package]]
+name = "day-10"
+version = "0.1.0"
+
+[[package]]
 name = "day-template"
 version = "0.1.0"
