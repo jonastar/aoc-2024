@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct IVec2 {
     pub x: i64,
     pub y: i64,
